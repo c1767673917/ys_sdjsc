@@ -370,14 +370,16 @@ pub async fn export_records(RawQuery(raw): RawQuery) -> ApiResult {
                 let file_name = db::opt_text(&r[7]).filter(|s| !s.is_empty());
                 let local = db::opt_text(&r[10]).filter(|s| !s.is_empty());
                 let webdav = db::opt_text(&r[12]).filter(|s| !s.is_empty());
-                let arcname = format!(
-                    "images/{}",
-                    file_name.unwrap_or_else(|| format!(
+                let base = file_name.unwrap_or_else(|| {
+                    format!(
                         "{}_{}",
                         business_id,
                         doc_number.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "unknown".into())
-                    ))
-                );
+                    )
+                });
+                // ZIP 条目名只保留 basename, 防止解压时 "../" 越出 images/
+                let base = base.replace('\\', "/").rsplit('/').next().unwrap_or("").replace("..", "_");
+                let arcname = format!("images/{}", if base.is_empty() { "unknown".to_string() } else { base });
                 if local.as_deref().map(|p| Path::new(p).exists()).unwrap_or(false) {
                     image_files.push(ImageJob { arcname, local_path: local, webdav_path: None, doc_number });
                 } else if webdav.is_some() {

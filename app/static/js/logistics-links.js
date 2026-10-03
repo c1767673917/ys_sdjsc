@@ -24,10 +24,14 @@
         toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2500);
     }
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text == null ? '' : String(text);
-        return div.innerHTML;
+    function escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function formatTime(value) {
@@ -62,7 +66,7 @@
             return `
                 <tr>
                     <td>${escapeHtml(link.logistics_name)}</td>
-                    <td class="col-count"><span class="${badgeClass}">${link.pending_count}</span></td>
+                    <td class="col-count"><span class="${badgeClass}">${escapeHtml(link.pending_count)}</span></td>
                     <td class="link-cell" title="${escapeHtml(fullUrl)}">${escapeHtml(fullUrl)}</td>
                     <td class="col-access">${escapeHtml(formatTime(link.last_access_at))}</td>
                     <td class="col-actions">

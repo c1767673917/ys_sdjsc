@@ -205,7 +205,7 @@ function updatePreview() {
             item.className = 'preview-item';
 
             item.innerHTML = `
-                <img src="${e.target.result}" alt="${file.name}">
+                <img src="${escapeHtml(e.target.result)}" alt="${escapeHtml(file.name)}">
                 <button class="btn-remove" onclick="removeFile(${index})">×</button>
             `;
             elements.previewList.appendChild(item);
@@ -255,7 +255,7 @@ async function uploadFiles() {
         const item = document.createElement('div');
         item.className = 'progress-item';
         item.innerHTML = `
-            <div class="filename">${file.name}</div>
+            <div class="filename">${escapeHtml(file.name)}</div>
             <div class="status loading">⏳</div>
         `;
         elements.progressList.appendChild(item);
@@ -335,26 +335,29 @@ async function showHistory() {
             elements.historyList.innerHTML = '<p style="text-align: center; color: #999;">暂无上传记录</p>';
         } else {
             elements.historyList.innerHTML = result.records.map(record => {
-                // 状态文字映射
+                // 状态文字映射；class 只允许已知值，避免接口状态被当成 class 注入
                 const statusText = {
                     'pending': '等待中',
                     'uploading': '上传中',
                     'success': '成功',
                     'failed': '失败'
                 };
+                const knownStatus = Object.prototype.hasOwnProperty.call(statusText, record.status);
+                const statusClass = knownStatus ? record.status : '';
+                const statusLabel = knownStatus ? statusText[record.status] : escapeHtml(record.status);
 
                 return `
                     <div class="history-item">
                         <div class="filename">
-                            ${record.file_name}
-                            <span class="status-badge ${record.status}">
-                                ${statusText[record.status] || record.status}
+                            ${escapeHtml(record.file_name)}
+                            <span class="status-badge ${statusClass}">
+                                ${statusLabel}
                             </span>
                         </div>
                         <div class="meta">
                             <div>大小: ${formatFileSize(record.file_size)}</div>
-                            <div>时间: ${formatDateTime(record.upload_time)}</div>
-                            ${record.error_message ? `<div style="color: #ff4d4f;">错误: ${record.error_message}</div>` : ''}
+                            <div>时间: ${escapeHtml(formatDateTime(record.upload_time))}</div>
+                            ${record.error_message ? `<div style="color: #ff4d4f;">错误: ${escapeHtml(record.error_message)}</div>` : ''}
                         </div>
                     </div>
                 `;
@@ -377,6 +380,17 @@ function showToast(message, type = 'success') {
     setTimeout(() => {
         elements.toast.style.display = 'none';
     }, 3000);
+}
+
+// HTML 转义: 文件名、错误信息等不可信文本拼入 innerHTML 前先转义
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // 格式化文件大小

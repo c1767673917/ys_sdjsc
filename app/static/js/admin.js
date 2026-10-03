@@ -270,14 +270,14 @@ function renderTable(records) {
                     ${state.selectedIds.has(record.id) ? 'checked' : ''}
                 >
             </td>
-            <td>${record.doc_number || '-'}</td>
+            <td>${escapeHtml(record.doc_number || '-')}</td>
             <td title="${escapeHtml(record.customer_name)}">${record.customer_name ? escapeHtml(record.customer_name) : '-'}</td>
-            <td>${record.doc_type || '-'}</td>
-            <td>${record.product_type || ''}</td>
-            <td>${formatDateTime(record.upload_time)}</td>
+            <td>${escapeHtml(record.doc_type || '-')}</td>
+            <td>${escapeHtml(record.product_type || '')}</td>
+            <td>${escapeHtml(formatDateTime(record.upload_time))}</td>
             <td>
-                <span class="file-name file-name-clickable" data-record-id="${record.id}" data-filename="${record.file_name}" title="${record.file_name}">
-                    ${truncateFileName(record.file_name)}
+                <span class="file-name file-name-clickable" data-record-id="${record.id}" data-filename="${escapeHtml(record.file_name)}" title="${escapeHtml(record.file_name)}">
+                    ${escapeHtml(truncateFileName(record.file_name))}
                 </span>
             </td>
             <td>${formatFileSize(record.file_size)}</td>
@@ -288,7 +288,7 @@ function renderTable(records) {
                 <button
                     class="btn-check ${record.checked ? 'checked' : 'unchecked'}"
                     data-id="${record.id}"
-                    data-filename="${record.file_name}"
+                    data-filename="${escapeHtml(record.file_name)}"
                     data-checked="${record.checked ? 'true' : 'false'}"
                 >
                     ${record.checked ? '已检查' : '检查'}
@@ -300,7 +300,7 @@ function renderTable(records) {
                     type="text"
                     class="notes-input"
                     data-id="${record.id}"
-                    value="${record.notes || ''}"
+                    value="${escapeHtml(record.notes || '')}"
                     maxlength="1000"
                     placeholder=""
                 >
@@ -368,9 +368,10 @@ function renderStatusBadge(status, errorMessage) {
     const config = statusConfig[status] || statusConfig['pending'];
     let html = `<span class="status-badge ${config.class}">${config.icon} ${config.text}</span>`;
 
-    // 失败状态显示错误信息
+    // 失败状态显示错误信息（title 与正文都转义）
     if (status === 'failed' && errorMessage) {
-        html += `<br><small style="color: #e74c3c;" title="${errorMessage}">${errorMessage}</small>`;
+        const safeError = escapeHtml(errorMessage);
+        html += `<br><small style="color: #e74c3c;" title="${safeError}">${safeError}</small>`;
     }
 
     return html;
@@ -1498,7 +1499,7 @@ function updateMigrationStatusDisplay(data) {
     if (data.errors && data.errors.length > 0) {
         errorsDiv.innerHTML = data.errors.map(error =>
             `<div class="error-item">
-                <strong>${error.filename}:</strong> ${error.error}
+                <strong>${escapeHtml(error.filename)}:</strong> ${escapeHtml(error.error)}
             </div>`
         ).join('');
     } else {

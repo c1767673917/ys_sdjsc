@@ -20,10 +20,22 @@
 
     let allDeliveries = [];
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text == null ? '' : String(text);
-        return div.innerHTML;
+    function escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // 只允许站内绝对路径或 http(s) 链接写入 href
+    function safeUploadHref(url) {
+        const value = url == null ? '' : String(url);
+        if (value.startsWith('/') && !value.startsWith('//')) return value;
+        if (value.startsWith('http://') || value.startsWith('https://')) return value;
+        return '#';
     }
 
     function formatTime(value) {
@@ -40,8 +52,9 @@
     }
 
     function showState(message, extraClass) {
+        const className = extraClass === 'success' ? 'success' : '';
         els.listContainer.innerHTML =
-            `<div class="state-tip ${extraClass || ''}">${escapeHtml(message)}</div>`;
+            `<div class="state-tip ${className}">${escapeHtml(message)}</div>`;
     }
 
     function renderList() {
@@ -72,7 +85,7 @@
                     </div>
                     ${d.shipping_memo ? `<div class="delivery-memo">${escapeHtml(d.shipping_memo)}</div>` : ''}
                 </div>
-                <a class="btn-upload" href="${escapeHtml(d.upload_url)}" target="_blank" rel="noopener">上传回单</a>
+                <a class="btn-upload" href="${escapeHtml(safeUploadHref(d.upload_url))}" target="_blank" rel="noopener">上传回单</a>
             </div>`).join('');
     }
 

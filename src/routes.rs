@@ -108,13 +108,24 @@ pub fn build(state: Arc<AppState>) -> Router {
         .route("/api/admin/logistics-links/{link_id}/regenerate", post(logistics::regenerate))
         .route("/api/admin/logistics-links/sync", post(logistics::trigger_sync))
         .route("/api/admin/logistics-links/sync-status", get(logistics::sync_status))
+        // 存储目录静态挂载: 单据图片仅管理员可读 (管理页通过 Cookie 访问)
+        .route("/uploaded_files/{*rest}", any(pages::uploaded_files))
+        .route("/cache/{*rest}", any(pages::cache_files))
         .route_layer(middleware::from_fn(pages::require_admin));
+
+    // 上传请求体上限: 单文件上限 x 单次文件数 + 1MB 表单开销, 超限 413
+    let s = config::get();
+    let upload_limit = (s.max_file_size.max(0) as u64)
+        .saturating_mul(s.max_files_per_request.max(1) as u64)
+        .saturating_add(1024 * 1024)
+        .min(usize::MAX as u64) as usize;
 
     let inner = Router::new()
         .route("/static/{*rest}", any(pages::static_files))
-        .route("/uploaded_files/{*rest}", any(pages::uploaded_files))
-        .route("/cache/{*rest}", any(pages::cache_files))
-        .route("/api/upload", post(upload::upload_files))
+        .route(
+            "/api/upload",
+            post(upload::upload_files).layer(axum::extract::DefaultBodyLimit::max(upload_limit)),
+        )
         .route("/api/history/{business_id}", get(history::get_upload_history))
         .merge(admin_routes)
         .route("/api/portal/{token}/deliveries", get(logistics::portal_deliveries))

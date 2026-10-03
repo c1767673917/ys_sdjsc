@@ -26,6 +26,14 @@ pub fn generate_unique_filename(doc_number: &str, file_extension: &str, storage_
     (new_filename, full_path)
 }
 
+/// doc_number 是否可安全用作文件名前缀
+pub fn is_safe_doc_number(doc_number: &str) -> bool {
+    !doc_number.contains("..")
+        && !doc_number
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '\'' | '<' | '>' | '|' | '&'))
+}
+
 /// 保存文件到本地 (自动创建目录)
 pub fn save_file_locally(content: &[u8], file_path: &str) -> std::io::Result<()> {
     let dir = crate::pyutil::dirname(file_path);
@@ -388,6 +396,14 @@ enum Job {
 }
 
 /// POST /api/upload — 批量上传文件（记录入库后立即返回, 后台异步处理）
+/// multipart 解析错误: 超过请求体上限返回 413, 其余 400
+fn multipart_error(e: axum::extract::multipart::MultipartError) -> ApiError {
+    if e.status() == axum::http::StatusCode::PAYLOAD_TOO_LARGE {
+        return ApiError::new(413, "请求体过大");
+    }
+    ApiError::new(400, format!("There was an error parsing the body: {}", e))
+}
+
 pub async fn upload_files(State(state): State<Arc<AppState>>, mut multipart: Multipart) -> Result<Response, ApiError> {
     let s = config::get();
 
@@ -399,14 +415,11 @@ pub async fn upload_files(State(state): State<Arc<AppState>>, mut multipart: Mul
         let field = match multipart.next_field().await {
             Ok(Some(f)) => f,
             Ok(None) => break,
-            Err(e) => return Err(ApiError::new(400, format!("There was an error parsing the body: {}", e))),
+            Err(e) => return Err(multipart_error(e)),
         };
         let name = field.name().unwrap_or("").to_string();
         let filename = field.file_name().map(|s| s.to_string());
-        let data = field
-            .bytes()
-            .await
-            .map_err(|e| ApiError::new(400, format!("There was an error parsing the body: {}", e)))?;
+        let data = field.bytes().await.map_err(multipart_error)?;
         match filename {
             Some(fname) => {
                 if name == "files" {
@@ -456,6 +469,10 @@ pub async fn upload_files(State(state): State<Arc<AppState>>, mut multipart: Mul
 
     if !py_isdigit(&business_id) {
         return Err(ApiError::new(400, "businessId必须为纯数字"));
+    }
+    // doc_number 会拼进文件名和存储路径, 拒绝路径分隔符、".." 和 HTML 特殊字符
+    if !is_safe_doc_number(&doc_number) {
+        return Err(ApiError::new(400, "doc_number包含非法字符"));
     }
     if !VALID_DOC_TYPES.contains(&doc_type.as_str()) {
         return Err(ApiError::new(
