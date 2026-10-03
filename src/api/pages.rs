@@ -109,16 +109,10 @@ pub async fn fallback(req: Request) -> Response {
             if let Some(q) = req.uri().query() {
                 location = format!("{}?{}", location, q);
             }
-            let host = req
-                .headers()
-                .get(header::HOST)
-                .and_then(|h| h.to_str().ok())
-                .unwrap_or("localhost")
-                .to_string();
-            let url = format!("http://{}{}", host, location);
+            // 站内相对跳转: 不信任 Host 头, 也不把 HTTPS 降级为 http
             return Response::builder()
                 .status(307)
-                .header(header::LOCATION, url)
+                .header(header::LOCATION, location)
                 .header(header::CONTENT_LENGTH, 0)
                 .body(axum::body::Body::empty())
                 .unwrap();

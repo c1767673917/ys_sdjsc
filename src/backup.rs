@@ -8,6 +8,7 @@
 use chrono::{Duration as ChronoDuration, NaiveDateTime};
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use once_cell::sync::Lazy;
 use serde_json::{json, Map, Value};
 use std::path::Path;
 
@@ -17,6 +18,9 @@ use crate::webdav::WebDavClient;
 
 const LOG: &str = "app.core.backup_service";
 const CONTEXT_MANAGER_ERROR: &str = "'_GeneratorContextManager' object has no attribute 'cursor'";
+
+/// 定时任务与手动备份共用，整段流程互斥
+static BACKUP_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 
 pub struct BackupService {
     webdav_client: WebDavClient,
@@ -38,7 +42,7 @@ impl BackupService {
         let s = config::get();
         let svc = BackupService {
             webdav_client: WebDavClient::new(),
-            db_path: "data/uploads.db".into(),
+            db_path: s.db_path(),
             env_path: ".env".into(),
             backup_dir: "temp_backups".into(),
         };
@@ -80,31 +84,46 @@ impl BackupService {
         let metadata = self.generate_backup_metadata();
         let level = config::get().backup_compression_level.clamp(0, 9) as u32;
         let bp = backup_path.clone();
+        let partial_path = format!("{}.partial", backup_path);
+        let partial_in_task = partial_path.clone();
 
         let r = tokio::task::spawn_blocking(move || -> Result<u64, String> {
             if !Path::new(&db_path).exists() {
                 return Err(format!("数据库文件不存在: {}", db_path));
             }
-            let file = std::fs::File::create(&bp).map_err(|e| e.to_string())?;
+            // 快照与元数据用唯一文件名；句柄后声明，清理最后执行
+            let snapshot_path = path_join(&backup_dir, &format!("snapshot_{}.db", uuid::Uuid::new_v4()));
+            let metadata_path = path_join(&backup_dir, &format!("metadata_{}.json", uuid::Uuid::new_v4()));
+            let _cleanup = RemoveFiles {
+                paths: vec![snapshot_path.clone(), metadata_path.clone(), partial_in_task.clone()],
+            };
+
+            if Path::new(&snapshot_path).exists() {
+                std::fs::remove_file(&snapshot_path).map_err(|e| e.to_string())?;
+            }
+            // VACUUM INTO 读出已提交的一致快照，避免直接拷贝未 checkpoint 的 WAL
+            let sql = format!("VACUUM INTO '{}'", snapshot_path.replace('\'', "''"));
+            crate::db::with_conn(|conn| conn.execute_batch(&sql)).map_err(|e| e.to_string())?;
+
+            let file = std::fs::File::create(&partial_in_task).map_err(|e| e.to_string())?;
             let enc = GzEncoder::new(file, Compression::new(level));
             let mut tar = tar::Builder::new(enc);
-            tar.append_path_with_name(&db_path, basename(&db_path)).map_err(|e| e.to_string())?;
+            tar.append_path_with_name(&snapshot_path, basename(&db_path)).map_err(|e| e.to_string())?;
             log::debug!(target: LOG, "已添加数据库文件: {}", db_path);
             if Path::new(&env_path).exists() {
                 tar.append_path_with_name(&env_path, basename(&env_path)).map_err(|e| e.to_string())?;
                 log::debug!(target: LOG, "已添加配置文件: {}", env_path);
             }
-            let metadata_path = path_join(&backup_dir, "metadata.json");
             std::fs::write(&metadata_path, metadata.as_bytes()).map_err(|e| e.to_string())?;
             tar.append_path_with_name(&metadata_path, "backup_metadata.json").map_err(|e| e.to_string())?;
-            std::fs::remove_file(&metadata_path).map_err(|e| e.to_string())?;
             let enc = tar.into_inner().map_err(|e| e.to_string())?;
             enc.finish().map_err(|e| e.to_string())?;
 
-            let size = std::fs::metadata(&bp).map_err(|e| e.to_string())?.len();
+            let size = std::fs::metadata(&partial_in_task).map_err(|e| e.to_string())?.len();
             if size < 1024 {
                 return Err("备份文件大小异常，可能创建失败".to_string());
             }
+            std::fs::rename(&partial_in_task, &bp).map_err(|e| e.to_string())?;
             Ok(size)
         })
         .await
@@ -118,8 +137,8 @@ impl BackupService {
             Err(e) => {
                 let error_msg = format!("创建备份失败: {}", e);
                 log::error!(target: LOG, "{}", error_msg);
-                if Path::new(&backup_path).exists() {
-                    let _ = std::fs::remove_file(&backup_path);
+                if Path::new(&partial_path).exists() {
+                    let _ = std::fs::remove_file(&partial_path);
                 }
                 CreateResult { success: false, filename, backup_path, file_size: 0, error: Some(error_msg) }
             }
@@ -212,6 +231,12 @@ impl BackupService {
 
     /// 执行完整备份流程
     pub async fn perform_backup(&self) -> Map<String, Value> {
+        let _g = BACKUP_LOCK.lock().await;
+        self.perform_backup_inner().await
+    }
+
+    /// 备份主体。调用方已持有 BACKUP_LOCK，此处不再加锁
+    async fn perform_backup_inner(&self) -> Map<String, Value> {
         log::info!(target: LOG, "开始执行定时备份任务");
         let started_at = beijing_now_iso();
         let mut result = Map::new();
@@ -279,9 +304,23 @@ impl BackupService {
         isoformat(&next)
     }
 
-    /// 手动触发备份
+    /// 手动触发备份。自行持锁后走主体，避免再调用 perform_backup 造成死锁
     pub async fn manual_backup(&self) -> Map<String, Value> {
+        let _g = BACKUP_LOCK.lock().await;
         log::info!(target: LOG, "执行手动备份");
-        self.perform_backup().await
+        self.perform_backup_inner().await
+    }
+}
+
+/// 离开作用域时删除临时文件（成功、失败或 panic）
+struct RemoveFiles {
+    paths: Vec<String>,
+}
+
+impl Drop for RemoveFiles {
+    fn drop(&mut self) {
+        for p in &self.paths {
+            let _ = std::fs::remove_file(p);
+        }
     }
 }

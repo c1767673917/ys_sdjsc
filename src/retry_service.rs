@@ -122,6 +122,44 @@ async fn mark_success(
     .await
 }
 
+/// 进程重启后恢复卡在 uploading 的记录。
+/// 未删除且没有用友文件号的改为可自动重试的网络失败；已有文件号的改为成功（用友已收到）。
+/// 返回影响行数。
+pub async fn recover_stale_uploading() -> Result<usize, String> {
+    let now = beijing_now_iso();
+    db::run(move |conn| {
+        // 一条 UPDATE 同时处理两种中断：无文件号转失败，已有文件号转成功
+        let n = conn
+            .execute(
+                r#"
+                UPDATE upload_history
+                SET status = CASE
+                        WHEN NULLIF(yonyou_file_id, '') IS NULL THEN 'failed'
+                        ELSE 'success'
+                    END,
+                    error_code = CASE
+                        WHEN NULLIF(yonyou_file_id, '') IS NULL THEN 'NETWORK_ERROR'
+                        ELSE error_code
+                    END,
+                    error_message = CASE
+                        WHEN NULLIF(yonyou_file_id, '') IS NULL THEN '服务重启导致上传中断，等待自动重试'
+                        ELSE error_message
+                    END,
+                    updated_at = ?
+                WHERE status = 'uploading'
+                  AND (
+                        (deleted_at IS NULL AND NULLIF(yonyou_file_id, '') IS NULL)
+                        OR NULLIF(yonyou_file_id, '') IS NOT NULL
+                      )
+                "#,
+                rusqlite::params![now],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n)
+    })
+    .await
+}
+
 async fn mark_still_failed(
     id: i64,
     error_code: Option<String>,

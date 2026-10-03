@@ -61,6 +61,13 @@ async fn main() {
         std::process::exit(3);
     }
 
+    // 调度器与 HTTP 监听之前，把重启中断的 uploading 记录恢复为可重试或成功
+    match retry_service::recover_stale_uploading().await {
+        Ok(n) if n > 0 => log::info!(target: LOG, "已恢复 {} 条中断的上传记录", n),
+        Ok(_) => {}
+        Err(e) => log::error!(target: LOG, "恢复中断的上传记录失败: {}", e),
+    }
+
     let (valid, errors, warnings) = settings.validate_webdav_health();
     if !valid {
         let msg = format!("WebDAV配置验证失败: {}", errors.join(", "));

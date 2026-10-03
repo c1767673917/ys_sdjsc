@@ -573,6 +573,15 @@ pub async fn cors(req: Request, next: Next) -> Response {
     resp
 }
 
+/// 访问日志中把管理令牌替换为 [admin], 避免令牌落入日志
+fn mask_admin_token(path: &str) -> String {
+    let token = &crate::config::get().admin_token;
+    if token.is_empty() {
+        return path.to_string();
+    }
+    path.replace(token.as_str(), "[admin]")
+}
+
 /// uvicorn 风格访问日志: INFO:     ip:port - "GET /path HTTP/1.1" 200 OK
 pub async fn access_log(req: Request, next: Next) -> Response {
     let addr = req
@@ -586,6 +595,7 @@ pub async fn access_log(req: Request, next: Next) -> Response {
         .path_and_query()
         .map(|p| p.as_str().to_string())
         .unwrap_or_else(|| "/".into());
+    let path = mask_admin_token(&path);
     let version = format!("{:?}", req.version()).replace("HTTP/", "");
     let resp = next.run(req).await;
     let st = resp.status();

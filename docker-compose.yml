@@ -35,25 +35,11 @@ services:
       - TEMP_STORAGE_DIR=./temp_storage
       - TOKEN_CACHE_DURATION=3600
 
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
-      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
-      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - S3_REGION=${S3_REGION:-us-east-1}
-      - S3_BASE_PATH=${S3_BASE_PATH:-djgl-hk}
-      - S3_PRESIGNED_EXPIRY=${S3_PRESIGNED_EXPIRY:-3600}
-      - S3_TIMEOUT=${S3_TIMEOUT:-30}
-      - S3_RETRY_COUNT=${S3_RETRY_COUNT:-3}
-      - S3_RETRY_DELAY=${S3_RETRY_DELAY:-5}
-      - S3_USE_PATH_STYLE=${S3_USE_PATH_STYLE:-true}
-      - S3_MULTIPART_THRESHOLD=${S3_MULTIPART_THRESHOLD:-52428800}
-      - S3_DEBUG=${S3_DEBUG:-false}
-
-      # 遗留 WebDAV 配置（仅迁移期需要）
-      # - WEBDAV_URL=${WEBDAV_URL}
-      # - WEBDAV_USERNAME=${WEBDAV_USERNAME}
-      # - WEBDAV_PASSWORD=${WEBDAV_PASSWORD}
-      # - WEBDAV_BASE_PATH=${WEBDAV_BASE_PATH}
+      # WebDAV 存储（程序只支持 WebDAV; 未设置时 compose 直接报错, 避免静默使用默认地址和口令）
+      - WEBDAV_URL=${WEBDAV_URL:?请设置 WEBDAV_URL}
+      - WEBDAV_USERNAME=${WEBDAV_USERNAME:?请设置 WEBDAV_USERNAME}
+      - WEBDAV_PASSWORD=${WEBDAV_PASSWORD:?请设置 WEBDAV_PASSWORD}
+      - WEBDAV_BASE_PATH=${WEBDAV_BASE_PATH:-onedrive_lcs}
 
     volumes:
       - ./data:/app/data

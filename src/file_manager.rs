@@ -127,19 +127,7 @@ impl FileManager {
     }
 
     fn load_pending_sync(&self) -> Value {
-        if !Path::new(&self.pending_sync_file).exists() {
-            return json!({"files": [], "last_sync": null});
-        }
-        match std::fs::read_to_string(&self.pending_sync_file)
-            .map_err(|e| e.to_string())
-            .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
-        {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!(target: LOG, "加载待同步清单失败: {}", e);
-                json!({"files": [], "last_sync": null})
-            }
-        }
+        load_pending_sync_file(&self.pending_sync_file)
     }
 
     fn save_pending_sync(&self, data: &Value) {
@@ -149,7 +137,7 @@ impl FileManager {
                 std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             }
             let text = serde_json::to_string_pretty(data).map_err(|e| e.to_string())?;
-            std::fs::write(&self.pending_sync_file, text).map_err(|e| e.to_string())
+            atomic_write(&self.pending_sync_file, text.as_bytes()).map_err(|e| e.to_string())
         })();
         if let Err(e) = r {
             log::error!(target: LOG, "保存待同步清单失败: {}", e);
@@ -206,10 +194,16 @@ impl FileManager {
                 let upload_result = self.webdav_client.upload_file(&temp_path, &webdav_path).await;
                 if upload_result.get("success") == Some(&Value::Bool(true)) {
                     let cache_path = self.get_cache_path(&webdav_path);
-                    self.write_cache(&cache_path, file_content).await;
+                    let cached = self.write_cache(&cache_path, file_content).await;
                     result.success = true;
-                    result.local_cache_path = Some(cache_path);
-                    result.is_cached = Some(true);
+                    if cached {
+                        result.local_cache_path = Some(cache_path);
+                        result.is_cached = Some(true);
+                    } else {
+                        // 缓存没落盘，不能把这条路径当成已缓存
+                        result.local_cache_path = None;
+                        result.is_cached = Some(false);
+                    }
                     result.webdav_etag = upload_result
                         .get("etag")
                         .and_then(|v| v.as_str())
@@ -221,9 +215,11 @@ impl FileManager {
                     log::warn!(target: LOG, "WebDAV上传失败，降级到临时存储: {}", err);
                     self.save_to_temp_storage(file_content, filename, &webdav_path, &mut result).await;
                 }
-                // 清理临时文件
+                // 上传用的临时文件无论成功与否都清理；删除失败只记日志，避免把已成功的结果降级
                 if Path::new(&temp_path).exists() {
-                    std::fs::remove_file(&temp_path).map_err(|e| e.to_string())?;
+                    if let Err(e) = std::fs::remove_file(&temp_path) {
+                        log::warn!(target: LOG, "删除临时文件失败 {}: {}", temp_path, e);
+                    }
                 }
                 Ok(())
             }
@@ -239,19 +235,31 @@ impl FileManager {
         result
     }
 
-    /// 写入本地缓存 (失败不影响主流程)
-    async fn write_cache(&self, cache_path: &str, content: &[u8]) {
+    /// 写入本地缓存 (失败不影响主流程)，返回是否写入成功
+    async fn write_cache(&self, cache_path: &str, content: &[u8]) -> bool {
         let dir = dirname(cache_path);
+        let path = cache_path.to_string();
+        let data = content.to_vec();
         let r = async {
             if !dir.is_empty() {
                 tokio::fs::create_dir_all(&dir).await?;
             }
-            tokio::fs::write(cache_path, content).await
+            // sync_all 会等磁盘，放到阻塞线程，避免卡住运行时
+            match tokio::task::spawn_blocking(move || atomic_write(&path, &data)).await {
+                Ok(res) => res,
+                Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+            }
         }
         .await;
         match r {
-            Ok(_) => log::debug!(target: LOG, "缓存文件写入成功: {}", cache_path),
-            Err(e) => log::error!(target: LOG, "写入缓存失败 {}: {}", cache_path, e),
+            Ok(_) => {
+                log::debug!(target: LOG, "缓存文件写入成功: {}", cache_path);
+                true
+            }
+            Err(e) => {
+                log::error!(target: LOG, "写入缓存失败 {}: {}", cache_path, e);
+                false
+            }
         }
     }
 
@@ -570,6 +578,49 @@ impl FileManager {
     }
 }
 
+/// 读取待同步清单。文件不存在时返回空清单；存在但读不出或解析失败时改名保留再返回空清单。
+fn load_pending_sync_file(path: &str) -> Value {
+    if !Path::new(path).exists() {
+        return json!({"files": [], "last_sync": null});
+    }
+    match std::fs::read_to_string(path)
+        .map_err(|e| e.to_string())
+        .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!(target: LOG, "加载待同步清单失败: {}", e);
+            // 留下原文件，避免下一次保存把未解析的条目覆盖掉
+            if Path::new(path).exists() {
+                let dest = format!("{}.corrupt.{}", path, beijing_now_naive().format("%Y%m%d_%H%M%S%3f"));
+                match std::fs::rename(path, &dest) {
+                    Ok(()) => log::error!(target: LOG, "已保留损坏的待同步清单: {}", dest),
+                    Err(re) => log::error!(target: LOG, "保留损坏的待同步清单失败 {}: {}", dest, re),
+                }
+            }
+            json!({"files": [], "last_sync": null})
+        }
+    }
+}
+
+/// 同目录写临时文件，flush/sync_all 后 rename 覆盖。失败时删除临时文件。
+fn atomic_write(path: &str, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = format!("{}.tmp.{}", path, uuid::Uuid::new_v4());
+    let result = (|| -> std::io::Result<()> {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(data)?;
+        f.flush()?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
 /// os.utime(path): 将访问/修改时间更新为当前时间
 fn touch(path: &str) -> std::io::Result<()> {
     let now = SystemTime::now();
@@ -594,4 +645,64 @@ pub fn walk_files(root: &Path) -> Vec<std::path::PathBuf> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_write_replaces_target_and_drops_tmp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pending_sync.json");
+        let path_str = path.to_str().unwrap();
+        std::fs::write(path_str, b"old-partial").unwrap();
+
+        let data = br#"{"files":[],"last_sync":null}"#;
+        atomic_write(path_str, data).unwrap();
+        assert_eq!(std::fs::read(path_str).unwrap(), data);
+        assert!(tmp_names(dir.path()).is_empty());
+
+        // 目标是目录时 rename 失败，临时文件应被删掉
+        let blocked = dir.path().join("blocked");
+        std::fs::create_dir(&blocked).unwrap();
+        let err = atomic_write(blocked.to_str().unwrap(), b"data").unwrap_err();
+        assert!(!err.to_string().is_empty());
+        assert!(tmp_names(dir.path()).is_empty());
+        assert!(blocked.is_dir());
+    }
+
+    #[test]
+    fn corrupt_pending_sync_is_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pending_sync.json");
+        let path_str = path.to_str().unwrap();
+        std::fs::write(path_str, b"{not json").unwrap();
+
+        let v = load_pending_sync_file(path_str);
+        assert_eq!(v, json!({"files": [], "last_sync": null}));
+        assert!(!path.exists());
+
+        let preserved: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().collect();
+        assert_eq!(preserved.len(), 1);
+        let name = preserved[0].file_name().to_string_lossy().into_owned();
+        assert!(name.starts_with("pending_sync.json.corrupt."), "{}", name);
+        assert_eq!(std::fs::read(preserved[0].path()).unwrap(), b"{not json");
+
+        // 文件不存在时不产生 .corrupt 备份
+        let missing = dir.path().join("missing.json");
+        let missing_str = missing.to_str().unwrap();
+        assert_eq!(load_pending_sync_file(missing_str), json!({"files": [], "last_sync": null}));
+        assert!(!missing.exists());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().flatten().count(), 1);
+    }
+
+    fn tmp_names(dir: &Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp."))
+            .collect()
+    }
 }

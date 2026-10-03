@@ -909,7 +909,7 @@ pub async fn preview_file(AxPath(record_id): AxPath<String>) -> ApiResult {
         match fm.get_file(&wp).await {
             Ok(content) => {
                 log::info!(target: LOG, "[性能] 预览文件 record_id={} 方式={} 耗时={}ms", record_id, method, ms(start));
-                let cd = http::header_value(&format!("inline; filename=\"{}\"", file_name))
+                let cd = http::header_value(&http::content_disposition("inline", &file_name))
                     .map_err(|e| ApiError::new(500, format!("预览失败: {}", e)))?;
                 return Ok(Response::builder()
                     .status(StatusCode::OK)
@@ -959,7 +959,8 @@ pub async fn download_file(AxPath(record_id): AxPath<String>) -> ApiResult {
     let file_name = db::opt_text(&row[1]).unwrap_or_else(|| "None".into());
     let webdav = db::opt_text(&row[2]).filter(|s| !s.is_empty());
 
-    let cd = format!("attachment; filename=\"{}\"", file_name);
+    // 非 ASCII / 含引号的文件名用 RFC 5987 filename*, 避免 latin-1 编码失败和头部拆分
+    let cd = http::content_disposition("attachment", &file_name);
     if let Some(lp) = local.filter(|p| Path::new(p).exists()) {
         log::info!(target: LOG, "[性能] 下载文件 record_id={} 方式=本地文件 耗时={}ms", record_id, ms(start));
         return http::file_response(
