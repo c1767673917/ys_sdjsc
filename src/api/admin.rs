@@ -165,7 +165,7 @@ pub async fn get_records(RawQuery(raw): RawQuery) -> ApiResult {
             |r| r.get(0),
         )?;
         let total_pages = (total + page_size - 1).div_euclid(page_size);
-        let offset = (page - 1) * page_size;
+        let offset = (page - 1).saturating_mul(page_size);
 
         let mut all: Vec<SqlValue> = vec![db::text(DEFAULT_UPLOAD_TYPE)];
         all.extend(params);

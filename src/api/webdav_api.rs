@@ -108,14 +108,15 @@ pub async fn health(State(st): State<Arc<AppState>>) -> ApiResult {
             Ok(_) => {
                 auth = true;
                 let test_content = b"health_check_test";
-                let test_path = "/health_check_test.txt";
-                if upload_test_file(&st, test_path, test_content).await {
+                // 唯一文件名，避免覆盖已有同名文件，也避免并发检查互相删除
+                let test_path = format!("/health_check_test_{}.txt", uuid::Uuid::new_v4());
+                if upload_test_file(&st, &test_path, test_content).await {
                     write = true;
-                    if let Ok(downloaded) = st.webdav_client.download_file(test_path).await {
+                    if let Ok(downloaded) = st.webdav_client.download_file(&test_path).await {
                         if downloaded == test_content {
                             read = true;
                         }
-                        st.webdav_client.delete_file(test_path).await;
+                        st.webdav_client.delete_file(&test_path).await;
                     }
                 }
             }
@@ -272,15 +273,15 @@ pub async fn test_connection(State(st): State<Arc<AppState>>) -> ApiResult {
     let r: Result<(), String> = async {
         st.webdav_client.list_files("/").await?;
         authentication = true;
-        let test_file = "/connection_test.txt";
+        let test_file = format!("/connection_test_{}.txt", uuid::Uuid::new_v4());
         let content = b"test";
-        if upload_test_file(&st, test_file, content).await {
+        if upload_test_file(&st, &test_file, content).await {
             write_permission = true;
-            let downloaded = st.webdav_client.download_file(test_file).await?;
+            let downloaded = st.webdav_client.download_file(&test_file).await?;
             if downloaded == content {
                 read_permission = true;
             }
-            st.webdav_client.delete_file(test_file).await;
+            st.webdav_client.delete_file(&test_file).await;
         }
         Ok(())
     }

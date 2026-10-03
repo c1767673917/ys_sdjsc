@@ -11,10 +11,14 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
+# 时区: 缓存过期等逻辑按本地时间与北京时间比较
+ENV TZ=Asia/Shanghai
+
 # 运行依赖: 文泉驿微米黑(导出图片叠加单号), 证书, curl(健康检查)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-wqy-microhei \
     ca-certificates \
+    tzdata \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

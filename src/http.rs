@@ -2,7 +2,7 @@
 //! - HTTPException -> `{"detail": ...}`
 //! - 请求参数校验失败 -> 422 `{"detail": [{type, loc, msg, input, ...}]}`
 //! - FileResponse / StaticFiles 的响应头
-//! - CORSMiddleware(allow_origins=*, allow_credentials=True)
+//! - CORS: allow_origins=*, 不允许携带凭证
 //! - 未匹配路由 404 / 方法不允许 405 / 尾斜杠 307 重定向
 //! - uvicorn 风格访问日志
 
@@ -538,38 +538,28 @@ pub async fn static_file(directory: &str, rel: &str, req_headers: &HeaderMap) ->
 // 中间件
 // ---------------------------------------------------------------------------
 
-/// CORSMiddleware(allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+/// CORS: 允许任意来源但不允许携带凭证 (前端同源, 跨站页面不能借用户 Cookie 读取响应)
 pub async fn cors(req: Request, next: Next) -> Response {
-    let origin = req.headers().get(header::ORIGIN).cloned();
-    let Some(origin) = origin else {
+    if !req.headers().contains_key(header::ORIGIN) {
         return next.run(req).await;
-    };
+    }
     let is_preflight = req.method() == Method::OPTIONS
         && req.headers().contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
     if is_preflight {
         let mut b = Response::builder()
             .status(StatusCode::OK)
-            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.clone())
-            .header(header::VARY, "Origin")
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(header::ACCESS_CONTROL_ALLOW_METHODS, "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT")
             .header(header::ACCESS_CONTROL_MAX_AGE, "600")
-            .header(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, "true")
             .header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
         if let Some(h) = req.headers().get(header::ACCESS_CONTROL_REQUEST_HEADERS) {
             b = b.header(header::ACCESS_CONTROL_ALLOW_HEADERS, h.clone());
         }
         return b.body(Body::from("OK")).unwrap();
     }
-    let has_cookie = req.headers().contains_key(header::COOKIE);
     let mut resp = next.run(req).await;
-    let h = resp.headers_mut();
-    if has_cookie {
-        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
-        h.append(header::VARY, HeaderValue::from_static("Origin"));
-    } else {
-        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
-    }
-    h.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
+    resp.headers_mut()
+        .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
     resp
 }
 

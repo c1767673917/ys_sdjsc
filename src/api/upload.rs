@@ -555,7 +555,10 @@ pub async fn upload_files(State(state): State<Arc<AppState>>, mut multipart: Mul
             Ok(c.last_insert_rowid())
         })
         .await
-        .map_err(|e| ApiError::new(500, e.to_string()))?;
+        .map_err(|e| {
+            println!("写入上传记录失败: {}", e);
+            ApiError::new(500, "服务器内部错误")
+        })?;
 
         if upload_type_value == UPLOAD_TYPE_LOGISTICS {
             jobs.push(Job::Logistics {

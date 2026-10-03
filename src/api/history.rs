@@ -61,7 +61,10 @@ pub async fn get_upload_history(AxPath(business_id): AxPath<String>, RawQuery(ra
         )
     })
     .await
-    .map_err(|e| ApiError::new(500, e.to_string()))?;
+    .map_err(|e| {
+        println!("查询上传历史失败: {}", e);
+        ApiError::new(500, "服务器内部错误")
+    })?;
 
     let mut records: Vec<Value> = Vec::new();
     let (mut success, mut failed) = (0, 0);

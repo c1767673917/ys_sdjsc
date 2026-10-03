@@ -5,18 +5,25 @@
 //! 网络 I/O 期间不持有数据库连接。
 
 use chrono::Duration as ChronoDuration;
+use once_cell::sync::Lazy;
 use rusqlite::types::Value as SqlValue;
 use serde_json::{json, Map, Value};
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
 
 use crate::config;
 use crate::db;
 use crate::file_manager::FileManager;
 use crate::pyutil::{beijing_now_iso, beijing_now_naive, isoformat};
-use crate::upload_types::{business_type_for, DEFAULT_UPLOAD_TYPE, UPLOAD_TYPE_LOGISTICS};
+use crate::upload_types::{business_type_for, DEFAULT_UPLOAD_TYPE, UPLOAD_TYPE_LOGISTICS, UPLOAD_TYPE_WAREHOUSE};
 use crate::yonyou::YonYouClient;
 
 const LOG: &str = "app.core.yonyou_retry_service";
+
+/// 用友已上传成功但落库失败的记录: id -> (file_id, logistics, customer_name)。
+/// 下一轮只补写数据库, 不再重新上传, 避免用友侧出现重复附件。
+static UPLOADED_UNSAVED: Lazy<Mutex<HashMap<i64, (Value, Value, Value)>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 struct Candidate {
     id: i64,
@@ -122,39 +129,56 @@ async fn mark_success(
     .await
 }
 
-/// 进程重启后恢复卡在 uploading 的记录。
-/// 未删除且没有用友文件号的改为可自动重试的网络失败；已有文件号的改为成功（用友已收到）。
-/// 返回影响行数。
+/// mark_success 失败时短暂退避后重试 (共 3 次)
+async fn mark_success_with_retry(
+    id: i64,
+    file_id: &Value,
+    logistics: &Value,
+    customer_name: &Value,
+    retry_count: i64,
+) -> Result<usize, String> {
+    let mut last_err = String::new();
+    for attempt in 0..3u64 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(attempt)).await;
+        }
+        match mark_success(id, file_id.clone(), logistics.clone(), customer_name.clone(), retry_count).await {
+            Ok(n) => return Ok(n),
+            Err(e) => last_err = e,
+        }
+    }
+    Err(last_err)
+}
+
+/// 进程重启后恢复卡在 uploading 的记录, 返回影响行数:
+/// - 已有用友文件号: 改为成功 (用友已收到)
+/// - 物流类、未删除: 改为 NETWORK_ERROR, 交给定时重试
+/// - 仓库类、未删除: 仓库上传不经过用友, 无法自动重试, 改为 WAREHOUSE_STORAGE_ERROR 提示重新上传
 pub async fn recover_stale_uploading() -> Result<usize, String> {
     let now = beijing_now_iso();
     db::run(move |conn| {
-        // 一条 UPDATE 同时处理两种中断：无文件号转失败，已有文件号转成功
-        let n = conn
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let mut n = tx
             .execute(
-                r#"
-                UPDATE upload_history
-                SET status = CASE
-                        WHEN NULLIF(yonyou_file_id, '') IS NULL THEN 'failed'
-                        ELSE 'success'
-                    END,
-                    error_code = CASE
-                        WHEN NULLIF(yonyou_file_id, '') IS NULL THEN 'NETWORK_ERROR'
-                        ELSE error_code
-                    END,
-                    error_message = CASE
-                        WHEN NULLIF(yonyou_file_id, '') IS NULL THEN '服务重启导致上传中断，等待自动重试'
-                        ELSE error_message
-                    END,
-                    updated_at = ?
-                WHERE status = 'uploading'
-                  AND (
-                        (deleted_at IS NULL AND NULLIF(yonyou_file_id, '') IS NULL)
-                        OR NULLIF(yonyou_file_id, '') IS NOT NULL
-                      )
-                "#,
+                "UPDATE upload_history SET status = 'success', updated_at = ?
+                 WHERE status = 'uploading' AND NULLIF(yonyou_file_id, '') IS NOT NULL",
                 rusqlite::params![now],
             )
             .map_err(|e| e.to_string())?;
+        for (upload_type, code, msg) in [
+            (UPLOAD_TYPE_WAREHOUSE, "WAREHOUSE_STORAGE_ERROR", "服务重启导致保存中断，请重新上传"),
+            (UPLOAD_TYPE_LOGISTICS, "NETWORK_ERROR", "服务重启导致上传中断，等待自动重试"),
+        ] {
+            n += tx
+                .execute(
+                    "UPDATE upload_history SET status = 'failed', error_code = ?, error_message = ?, updated_at = ?
+                     WHERE status = 'uploading' AND deleted_at IS NULL AND NULLIF(yonyou_file_id, '') IS NULL
+                       AND COALESCE(NULLIF(upload_type, ''), ?) = ?",
+                    rusqlite::params![code, msg, now, DEFAULT_UPLOAD_TYPE, upload_type],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(n)
     })
     .await
@@ -232,6 +256,27 @@ pub async fn retry_failed_yonyou_uploads(fm: &FileManager, yc: &YonYouClient) ->
         let r: Result<(), String> = async {
             let new_retry_count = c.retry_count + 1;
             let doc = show(&c.doc_number);
+
+            // 0. 上一轮用友已成功但落库失败: 只补写数据库
+            let unsaved = UPLOADED_UNSAVED.lock().unwrap().get(&c.id).cloned();
+            if let Some((file_id, logistics, customer_name)) = unsaved {
+                let n = mark_success(c.id, file_id.clone(), logistics, customer_name, new_retry_count).await?;
+                UPLOADED_UNSAVED.lock().unwrap().remove(&c.id);
+                if n == 0 {
+                    skipped += 1;
+                    log::info!(target: LOG, "[用友重试] 记录已变更, 跳过更新 id={} doc={}", c.id, doc);
+                    return Ok(());
+                }
+                succeeded += 1;
+                log::info!(
+                    target: LOG,
+                    "[用友重试] 补写成功状态 id={} doc={} file_id={}",
+                    c.id,
+                    doc,
+                    crate::pyutil::py_str(&file_id)
+                );
+                return Ok(());
+            }
 
             // 1. 取回文件内容(本地优先, 其次 WebDAV)
             let has_local = c.local_file_path.as_deref().map(|p| Path::new(p).exists()).unwrap_or(false);
@@ -317,7 +362,24 @@ pub async fn retry_failed_yonyou_uploads(fm: &FileManager, yc: &YonYouClient) ->
                 }
             }
 
-            let updated = mark_success(c.id, file_id.clone(), logistics, customer_name, new_retry_count).await?;
+            let updated = match mark_success_with_retry(c.id, &file_id, &logistics, &customer_name, new_retry_count).await {
+                Ok(n) => n,
+                Err(e) => {
+                    UPLOADED_UNSAVED
+                        .lock()
+                        .unwrap()
+                        .insert(c.id, (file_id.clone(), logistics, customer_name));
+                    log::error!(
+                        target: LOG,
+                        "[用友重试] 用友已上传成功但写库失败, 下一轮仅补写 id={} doc={} file_id={}: {}",
+                        c.id,
+                        doc,
+                        crate::pyutil::py_str(&file_id),
+                        e
+                    );
+                    return Err(e);
+                }
+            };
             if updated > 0 {
                 succeeded += 1;
                 log::info!(

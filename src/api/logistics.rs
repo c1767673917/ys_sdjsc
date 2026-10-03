@@ -47,15 +47,17 @@ pub async fn regenerate(AxPath(link_id): AxPath<String>) -> ApiResult {
 
 /// POST /api/admin/logistics-links/sync — 后台执行, 返回 202
 pub async fn trigger_sync() -> ApiResult {
-    if delivery_sync::is_sync_running() {
+    // 持锁后再查冷却, 守卫移入任务; 返回 202 前写入冷却起点
+    let Ok(guard) = delivery_sync::SYNC_LOCK.clone().try_lock_owned() else {
         return Err(ApiError::new(409, "同步正在进行中"));
-    }
+    };
     let remaining = delivery_sync::get_manual_cooldown_remaining();
     if remaining > 0 {
         return Err(ApiError::new(409, format!("操作过于频繁, 请{}秒后再试", remaining)));
     }
-    tokio::spawn(async {
-        delivery_sync::sync_delivery_snapshot("manual").await;
+    delivery_sync::mark_manual_sync_started();
+    tokio::spawn(async move {
+        delivery_sync::sync_delivery_snapshot_locked("manual", guard).await;
     });
     Ok(json_response(StatusCode::ACCEPTED, &json!({"started": true})))
 }

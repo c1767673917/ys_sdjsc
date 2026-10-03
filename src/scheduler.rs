@@ -255,6 +255,14 @@ fn next_daily(now: NaiveDateTime, hour: u32) -> NaiveDateTime {
     }
 }
 
+/// misfire 宽限秒数。Daily 每天只跑一次，晚醒 1 小时内仍执行；Interval 保持 30 秒。
+fn misfire_grace_secs(trigger: &Trigger) -> i64 {
+    match trigger {
+        Trigger::Daily { .. } => 3600,
+        Trigger::Interval { .. } => 30,
+    }
+}
+
 fn trigger_str(t: &Trigger) -> String {
     match t {
         Trigger::Interval { seconds, .. } => {
@@ -415,8 +423,8 @@ async fn run_job(job: Job, svc: Arc<Services>, start: NaiveDateTime) {
             Trigger::Daily { hour } => next_daily(now, hour),
         };
 
-        // misfire_grace_time = 30 秒
-        if (now - scheduled).num_seconds() > 30 {
+        // misfire_grace_time: Daily 3600 秒, Interval 30 秒。下次时间已在上面算好，晚醒不会连跑两次。
+        if (now - scheduled).num_seconds() > misfire_grace_secs(&job.trigger) {
             log::warn!(
                 target: APS_LOG,
                 "Run time of job \"{} (trigger: {}, next run at: {})\" was missed by {}",
@@ -467,5 +475,41 @@ async fn run_job(job: Job, svc: Arc<Services>, start: NaiveDateTime) {
                 next_s
             );
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dt(s: &str) -> NaiveDateTime {
+        NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()
+    }
+
+    #[test]
+    fn daily_grace_runs_ten_minutes_late_once() {
+        assert_eq!(misfire_grace_secs(&Trigger::Daily { hour: 2 }), 3600);
+        assert_eq!(misfire_grace_secs(&Trigger::Interval { seconds: 300, first_delay: None }), 30);
+
+        let scheduled = dt("2026-03-15 02:00:00");
+        let now = scheduled + ChronoDuration::minutes(10);
+        let late = (now - scheduled).num_seconds();
+        // 晚醒 10 分钟仍在 Daily 宽限内，会执行；Interval 超过 30 秒则跳过
+        assert!(late <= misfire_grace_secs(&Trigger::Daily { hour: 2 }));
+        assert!(late > misfire_grace_secs(&Trigger::Interval { seconds: 60, first_delay: None }));
+        // 边界与循环里的 `>` 一致：刚好等于宽限仍执行
+        assert!(3600 <= misfire_grace_secs(&Trigger::Daily { hour: 0 }));
+        assert!(3601 > misfire_grace_secs(&Trigger::Daily { hour: 0 }));
+        assert!(30 <= misfire_grace_secs(&Trigger::Interval { seconds: 1, first_delay: None }));
+        assert!(31 > misfire_grace_secs(&Trigger::Interval { seconds: 1, first_delay: None }));
+
+        // 下次调度按醒来时刻计算，落到次日同一时刻，本次只跑一轮
+        let next = next_daily(now, 2);
+        assert_eq!(next, dt("2026-03-16 02:00:00"));
+        assert!(next > now);
+
+        let too_late = scheduled + ChronoDuration::seconds(3601);
+        assert!((too_late - scheduled).num_seconds() > misfire_grace_secs(&Trigger::Daily { hour: 2 }));
+        assert_eq!(next_daily(too_late, 2), dt("2026-03-16 02:00:00"));
     }
 }

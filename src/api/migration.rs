@@ -24,8 +24,9 @@ struct LocalFile {
     file_size: Value,
 }
 
-/// 查询已成功上传但未同步到WebDAV、且本地文件存在的记录
-async fn get_local_files_to_migrate() -> Vec<LocalFile> {
+/// 查询已成功上传但未同步到WebDAV、且本地文件存在的记录。
+/// 数据库查询失败时打日志并返回 Err (调用方决定是失败还是按空列表继续)。
+async fn get_local_files_to_migrate() -> Result<Vec<LocalFile>, String> {
     let r = db::run(|c| {
         db::query_rows(
             c,
@@ -42,7 +43,7 @@ async fn get_local_files_to_migrate() -> Vec<LocalFile> {
     })
     .await;
     match r {
-        Ok(rows) => rows
+        Ok(rows) => Ok(rows
             .into_iter()
             .filter_map(|r| {
                 let path = db::opt_text(&r[2])?;
@@ -57,10 +58,10 @@ async fn get_local_files_to_migrate() -> Vec<LocalFile> {
                     file_size: db::to_json(&r[4]),
                 })
             })
-            .collect(),
+            .collect()),
         Err(e) => {
             log::error!(target: LOG, "获取本地文件列表失败: {}", e);
-            vec![]
+            Err(e.to_string())
         }
     }
 }
@@ -94,7 +95,11 @@ async fn background_migration_task(st: Arc<AppState>, migration_id: String, dry_
         if dry_run { "True" } else { "False" }
     );
 
-    let files = get_local_files_to_migrate().await;
+    // 查询失败时保持原行为: 函数内已打日志, 按空列表结束任务
+    let files = match get_local_files_to_migrate().await {
+        Ok(files) => files,
+        Err(_) => Vec::new(),
+    };
     let total = files.len();
     if total == 0 {
         update_task(&st, &migration_id, json!({"status": "completed", "message": "没有需要迁移的文件"}));
@@ -185,31 +190,49 @@ pub async fn start(State(st): State<Arc<AppState>>, body: Bytes) -> ApiResult {
     let dry_run = body_bool(&m, "dry_run", Some(false), &mut errors);
     check(errors)?;
 
-    let running: Option<String> = {
-        let g = st.migrations.lock().unwrap();
-        g.iter()
+    let migration_id = uuid::Uuid::new_v4().to_string();
+    // 同一次持锁内检查并插入占位, 避免并发请求都通过检查
+    {
+        let mut g = st.migrations.lock().unwrap();
+        if let Some(id) = g
+            .iter()
             .find(|(_, t)| matches!(t.get("status").and_then(|s| s.as_str()), Some("running") | Some("pending")))
             .map(|(k, _)| k.clone())
-    };
-    if let Some(id) = running {
-        // 原实现在 try 内抛出 409 后被通用 except 包装为 500
-        let msg = format!("启动迁移任务失败: 409: 已有运行中的迁移任务: {}", id);
-        log::error!(target: LOG, "{}", msg);
-        return Err(ApiError::new(500, msg));
+        {
+            // 原实现在 try 内抛出 409 后被通用 except 包装为 500
+            let msg = format!("启动迁移任务失败: 409: 已有运行中的迁移任务: {}", id);
+            log::error!(target: LOG, "{}", msg);
+            return Err(ApiError::new(500, msg));
+        }
+        g.insert(
+            migration_id.clone(),
+            json!({
+                "migration_id": migration_id,
+                "status": "pending",
+                "total_files": 0,
+                "progress": {"total": 0, "completed": 0, "failed": 0, "percentage": 0.0},
+                "created_at": beijing_now_iso(),
+                "dry_run": dry_run,
+            }),
+        );
     }
 
-    let migration_id = uuid::Uuid::new_v4().to_string();
-    let files = get_local_files_to_migrate().await;
+    let files = match get_local_files_to_migrate().await {
+        Ok(files) => files,
+        Err(e) => {
+            st.migrations.lock().unwrap().remove(&migration_id);
+            let msg = format!("启动迁移任务失败: {}", e);
+            log::error!(target: LOG, "{}", msg);
+            return Err(ApiError::new(500, msg));
+        }
+    };
     let n = files.len();
-    st.migrations.lock().unwrap().insert(
-        migration_id.clone(),
+    update_task(
+        &st,
+        &migration_id,
         json!({
-            "migration_id": migration_id,
-            "status": "pending",
             "total_files": n,
             "progress": {"total": n, "completed": 0, "failed": 0, "percentage": 0.0},
-            "created_at": beijing_now_iso(),
-            "dry_run": dry_run,
         }),
     );
 
@@ -311,7 +334,11 @@ pub async fn cleanup(State(st): State<Arc<AppState>>) -> ApiResult {
 
 /// GET /stats
 pub async fn stats() -> ApiResult {
-    let local = get_local_files_to_migrate().await;
+    // 查询失败时保持原行为: 记日志后按空列表统计
+    let local = match get_local_files_to_migrate().await {
+        Ok(files) => files,
+        Err(_) => Vec::new(),
+    };
     let local_count = local.len() as i64;
     let mut local_size_i: i64 = 0;
     let mut local_size_f: f64 = 0.0;

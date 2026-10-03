@@ -17,6 +17,9 @@ const LOG: &str = "app.core.file_manager";
 /// 待同步清单文件的进程内互斥 (多个 FileManager 实例共享同一个清单文件)
 static PENDING_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
 
+/// 同步单飞锁: 手动触发与定时任务同时进来时，后来者直接跳过
+static SYNC_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
+
 /// save_file 的返回结果 (对应原实现返回的 dict)
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
@@ -428,8 +431,18 @@ impl FileManager {
 
     /// 同步待同步文件到WebDAV
     pub async fn sync_pending_files(&self) -> Map<String, Value> {
-        log::info!(target: LOG, "开始同步待同步文件");
         let to_map = |v: Value| v.as_object().cloned().unwrap_or_default();
+        // 已有同步在跑时不排队，避免同一条目被处理两次
+        let Ok(_sync_guard) = SYNC_LOCK.try_lock() else {
+            log::info!(target: LOG, "同步任务正在进行中，跳过");
+            return to_map(json!({
+                "success": true,
+                "message": "同步任务正在进行中，跳过",
+                "synced_count": 0,
+                "failed_count": 0
+            }));
+        };
+        log::info!(target: LOG, "开始同步待同步文件");
 
         if !self.check_webdav_health().await {
             return to_map(json!({

@@ -160,6 +160,9 @@ async function loadStatistics() {
     try {
         const response = await fetch('/api/admin/statistics');
         const data = await response.json();
+        if (!response.ok) {
+            throw new Error(getErrorDetail(data, response));
+        }
 
         elements.statTotal.textContent = data.total_uploads;
         elements.statSuccess.textContent = data.success_count;
@@ -175,6 +178,7 @@ async function loadStatistics() {
 
     } catch (error) {
         console.error('加载统计数据失败:', error);
+        showToast('加载数据失败: ' + error.message, 'error');
     }
 }
 
@@ -338,15 +342,20 @@ function renderTable(records) {
 
 // 更新分页信息
 function updatePagination() {
+    // 无记录时 total_pages 为 0，仍显示第 1 页 / 共 1 页，翻页按钮全部禁用
+    const empty = !(state.totalPages > 0);
+    const displayPage = empty ? 1 : state.currentPage;
+    const displayPages = empty ? 1 : state.totalPages;
+
     elements.totalRecordsSpan.textContent = state.totalRecords;
-    elements.currentPageSpan.textContent = state.currentPage;
-    elements.totalPagesSpan.textContent = state.totalPages;
+    elements.currentPageSpan.textContent = displayPage;
+    elements.totalPagesSpan.textContent = displayPages;
 
     // 更新按钮状态
-    elements.btnFirstPage.disabled = state.currentPage === 1;
-    elements.btnPrevPage.disabled = state.currentPage === 1;
-    elements.btnNextPage.disabled = state.currentPage === state.totalPages;
-    elements.btnLastPage.disabled = state.currentPage === state.totalPages;
+    elements.btnFirstPage.disabled = empty || state.currentPage === 1;
+    elements.btnPrevPage.disabled = empty || state.currentPage === 1;
+    elements.btnNextPage.disabled = empty || state.currentPage === state.totalPages;
+    elements.btnLastPage.disabled = empty || state.currentPage === state.totalPages;
 }
 
 // 跳转页面
@@ -529,9 +538,15 @@ async function handleConfirmExport() {
         params.append('include_doc_number', includeDocNumber.toString());
 
         // 使用新标签页下载，避免 blob 内存问题导致大文件卡住
-        const downloadUrl = `/api/admin/export?${params}`;
-        window.open(downloadUrl, '_blank');
-        showToast('导出已在新标签页开始，请等待下载完成', 'success');
+        const url = `/api/admin/export?${params}`;
+        const popup = window.open(url, '_blank');
+        if (popup) {
+            showToast('导出已在新标签页开始，请等待下载完成', 'success');
+        } else {
+            // 弹窗被拦截时改在当前页下载
+            window.location.href = url;
+            showToast('导出已开始', 'success');
+        }
     } catch (error) {
         if (error.name === 'TimeoutError' || error.name === 'AbortError') {
             showToast('导出超时，请稍后重试', 'error');
@@ -588,6 +603,27 @@ function truncateFileName(fileName) {
     if (!fileName) return '-';
     if (fileName.length <= 17) return fileName;
     return fileName.substring(0, 17) + '...';
+}
+
+// 失败响应文案: detail 为字符串或 [{msg}]，否则用 HTTP 状态码文本
+function getErrorDetail(data, response) {
+    const detail = data && data.detail;
+    if (typeof detail === 'string' && detail) {
+        return detail;
+    }
+    if (Array.isArray(detail)) {
+        const text = detail
+            .map(item => (item && item.msg != null && item.msg !== '') ? String(item.msg) : '')
+            .filter(Boolean)
+            .join('; ');
+        if (text) {
+            return text;
+        }
+    }
+    if (response && response.statusText) {
+        return response.statusText;
+    }
+    return response ? ('HTTP ' + response.status) : '请求失败';
 }
 
 // HTML 转义: 客户名称等来自外部接口的文本拼入 innerHTML 前先转义, 防止 DOM 注入
@@ -1244,12 +1280,14 @@ async function syncNow() {
 
         const data = await response.json();
 
-        if (data.success) {
+        if (!response.ok) {
+            showToast(getErrorDetail(data, response), 'error');
+        } else if (data.success) {
             showToast(data.message || '同步任务已启动', 'success');
             // 3秒后刷新状态
             setTimeout(checkWebDAVStatus, 3000);
         } else {
-            showToast(data.error || '同步失败', 'error');
+            showToast('同步失败', 'error');
         }
     } catch (error) {
         console.error('同步失败:', error);
@@ -1346,13 +1384,15 @@ async function startMigration() {
 
         const data = await response.json();
 
-        if (data.success) {
+        if (!response.ok) {
+            showToast(getErrorDetail(data, response), 'error');
+        } else if (data.success) {
             currentMigrationId = data.migration_id;
             showMigrationStatus();
             startMigrationStatusMonitoring();
             showToast(`迁移任务已启动，共${data.total_files}个文件`, 'success');
         } else {
-            showToast(data.error || '启动迁移失败', 'error');
+            showToast('启动迁移失败', 'error');
         }
     } catch (error) {
         console.error('启动迁移失败:', error);
@@ -1380,13 +1420,15 @@ async function startDryRunMigration() {
 
         const data = await response.json();
 
-        if (data.success) {
+        if (!response.ok) {
+            showToast(getErrorDetail(data, response), 'error');
+        } else if (data.success) {
             currentMigrationId = data.migration_id;
             showMigrationStatus();
             startMigrationStatusMonitoring();
             showToast(`演练模式已启动，共${data.total_files}个文件`, 'info');
         } else {
-            showToast(data.error || '启动演练失败', 'error');
+            showToast('启动演练失败', 'error');
         }
     } catch (error) {
         console.error('启动演练失败:', error);

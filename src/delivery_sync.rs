@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use rusqlite::types::Value as SqlValue;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config;
@@ -21,8 +21,10 @@ use crate::yonyou::YonYouClient;
 
 const LOG: &str = "app.core.delivery_sync_service";
 
-/// 单飞互斥: 同一时刻只允许一轮同步(定时与手动共用)
-static SYNC_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| tokio::sync::Mutex::new(()));
+/// 单飞互斥: 同一时刻只允许一轮同步(定时与手动共用)。
+/// 包在 Arc 里以便 try_lock_owned, 把守卫移进手动触发的后台任务。
+pub(crate) static SYNC_LOCK: Lazy<Arc<tokio::sync::Mutex<()>>> =
+    Lazy::new(|| Arc::new(tokio::sync::Mutex::new(())));
 /// 手动同步冷却(进程内)
 static LAST_MANUAL_SYNC_TS: Lazy<Mutex<f64>> = Lazy::new(|| Mutex::new(0.0));
 
@@ -49,11 +51,16 @@ pub fn get_manual_cooldown_remaining() -> i64 {
     remaining.max(0.0).trunc() as i64
 }
 
+/// 记下手动同步的冷却起点。调用方须已持有 SYNC_LOCK。
+pub(crate) fn mark_manual_sync_started() {
+    *LAST_MANUAL_SYNC_TS.lock().unwrap() = time_now();
+}
+
 /// 执行一轮快照同步; trigger: "scheduled" / "manual"
 pub async fn sync_delivery_snapshot(trigger: &str) -> Map<String, Value> {
     let to_map = |v: Value| v.as_object().cloned().unwrap();
 
-    let Ok(_guard) = SYNC_LOCK.try_lock() else {
+    let Ok(guard) = SYNC_LOCK.clone().try_lock_owned() else {
         return to_map(json!({"success": false, "skipped": "running", "error": "同步正在进行中"}));
     };
 
@@ -66,8 +73,18 @@ pub async fn sync_delivery_snapshot(trigger: &str) -> Map<String, Value> {
                 "error": format!("请{}秒后再试", remaining),
             }));
         }
-        *LAST_MANUAL_SYNC_TS.lock().unwrap() = time_now();
+        mark_manual_sync_started();
     }
+
+    sync_delivery_snapshot_locked(trigger, guard).await
+}
+
+/// 调用方已持有 SYNC_LOCK, 执行同步主体 (不再抢锁、不再检查冷却)
+pub(crate) async fn sync_delivery_snapshot_locked(
+    trigger: &str,
+    guard: tokio::sync::OwnedMutexGuard<()>,
+) -> Map<String, Value> {
+    let to_map = |v: Value| v.as_object().cloned().unwrap();
 
     let s = config::get();
     let started = Instant::now();
@@ -88,7 +105,7 @@ pub async fn sync_delivery_snapshot(trigger: &str) -> Map<String, Value> {
     .await;
 
     let duration_ms = started.elapsed().as_millis() as i64;
-    match r {
+    let result = match r {
         Ok((pages, raw_count, kept_count)) => {
             log::info!(
                 target: LOG,
@@ -121,7 +138,9 @@ pub async fn sync_delivery_snapshot(trigger: &str) -> Map<String, Value> {
                 "error": e,
             }))
         }
-    }
+    };
+    drop(guard);
+    result
 }
 
 /// page_count 的数值形式 (等价 Python `x or 0` 后与 int 比较)
