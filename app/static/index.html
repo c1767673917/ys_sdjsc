@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>单据上传 - 用友云</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <h1>单据上传</h1>
+            <p class="business-id">单据信息: <span id="businessIdDisplay">--</span></p>
+            <p class="business-id upload-type-display" id="uploadTypeDisplay" style="display: none;">业务类型: <span id="uploadTypeValue">--</span></p>
+        </header>
+
+        <!-- 业务类型选择 -->
+        <div class="upload-type-section" id="uploadTypeSection">
+            <p class="upload-type-tip">请先选择本次上传的业务类型</p>
+            <div class="upload-type-options">
+                <button class="upload-type-btn" id="btnTypeLogistics" data-type="物流">物流</button>
+                <button class="upload-type-btn" id="btnTypeWarehouse" data-type="仓库">仓库</button>
+            </div>
+        </div>
+
+        <!-- 上传区域 -->
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept="image/*" multiple style="display: none;">
+                <div class="upload-icon">📷</div>
+                <p>点击选择图片或拍照</p>
+                <p class="hint">支持jpg、png、gif格式，单张最大10MB，最多10张</p>
+            </div>
+        </div>
+
+        <!-- 图片预览区域 -->
+        <div class="preview-section" id="previewSection" style="display: none;">
+            <div class="preview-header">
+                <span>已选择 <span id="selectedCount">0</span>/10 张</span>
+                <button class="btn-clear" id="btnClear">清空</button>
+            </div>
+            <div class="preview-list" id="previewList"></div>
+        </div>
+
+        <!-- 上传按钮 -->
+        <div class="action-section">
+            <button class="btn-upload" id="btnUpload" disabled>开始上传</button>
+        </div>
+
+        <!-- 进度区域 -->
+        <div class="progress-section" id="progressSection" style="display: none;">
+            <div class="progress-header">
+                <span>上传进度</span>
+                <span id="progressText">0/0</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-list" id="progressList"></div>
+        </div>
+
+        <!-- 结果提示 -->
+        <div class="toast" id="toast"></div>
+
+        <!-- 历史记录按钮 -->
+        <div class="history-section">
+            <button class="btn-history" id="btnHistory">查看上传历史</button>
+        </div>
+    </div>
+
+    <!-- 历史记录弹窗 -->
+    <div class="modal" id="historyModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>上传历史</h2>
+                <button class="btn-close" id="btnCloseModal">×</button>
+            </div>
+            <div class="modal-body" id="historyList"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

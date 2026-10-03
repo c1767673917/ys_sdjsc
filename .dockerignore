@@ -1,0 +1,12 @@
+target/
+.git/
+.env
+data/
+logs/
+cache/
+temp_storage/
+temp_backups/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store

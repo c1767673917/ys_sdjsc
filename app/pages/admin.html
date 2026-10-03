@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>上传记录管理 - 单据上传系统</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- 头部 -->
+        <header class="admin-header">
+            <h1>上传记录管理</h1>
+            <div class="header-actions">
+                <a class="btn-secondary" id="navLogisticsLinks" href="#" style="text-decoration: none;">物流链接管理</a>
+                <button class="btn-refresh" id="btnRefresh">刷新</button>
+                <!-- Export Options Wrapper -->
+                <div class="export-wrapper">
+                    <button class="btn-export" id="btnExport" aria-expanded="false" aria-controls="exportOptionsPanel">
+                        导出选项 <span class="export-arrow">▼</span>
+                    </button>
+
+                    <!-- Export Options Panel -->
+                    <div class="export-options-panel" id="exportOptionsPanel" style="display: none;">
+                        <div class="export-option">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="exportExcelCheckbox" checked>
+                                <span>导出Excel数据</span>
+                            </label>
+                        </div>
+                        <div class="export-option">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="exportImagesCheckbox" checked>
+                                <span>导出图片</span>
+                            </label>
+                        </div>
+                        <div class="export-option nested" id="exportDocNumberOption">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="exportDocNumberCheckbox" checked>
+                                <span>导出带单号</span>
+                            </label>
+                        </div>
+                        <button class="btn-confirm-export" id="btnConfirmExport">确认导出</button>
+                    </div>
+                </div>
+                <button class="btn-delete" id="btnBatchDelete" style="display: none;">批量删除</button>
+            </div>
+        </header>
+
+        <!-- 统计卡片 -->
+        <div class="stats-section" id="statsSection">
+            <div class="stat-card">
+                <div class="stat-label">总上传数</div>
+                <div class="stat-value" id="statTotal">0</div>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-label">成功</div>
+                <div class="stat-value" id="statSuccess">0</div>
+            </div>
+            <div class="stat-card uploading">
+                <div class="stat-label">上传中</div>
+                <div class="stat-value" id="statUploading">0</div>
+            </div>
+            <div class="stat-card pending">
+                <div class="stat-label">待上传</div>
+                <div class="stat-value" id="statPending">0</div>
+            </div>
+            <div class="stat-card error">
+                <div class="stat-label">失败</div>
+                <div class="stat-value" id="statFailed">0</div>
+            </div>
+        </div>
+
+        <!-- WebDAV状态和迁移功能 -->
+        <div class="webdav-section">
+            <div class="webdav-status-card">
+                <div class="card-header" id="webdavCardHeader" style="cursor: pointer;">
+                    <h3>WebDAV状态</h3>
+                    <span class="collapse-icon">▼</span>
+                </div>
+                <div class="status-indicator" id="webdavStatus">
+                    <div class="status-dot" id="webdavStatusDot"></div>
+                    <span id="webdavStatusText">检查中...</span>
+                </div>
+                <div class="collapsible-content" id="webdavCollapsibleContent" style="display: none;">
+                    <div class="status-details" id="webdavDetails">
+                        <div class="detail-item">
+                            <span>待同步文件:</span>
+                            <span id="pendingSyncCount">0</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>缓存文件:</span>
+                            <span id="cachedFilesCount">0</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>缓存大小:</span>
+                            <span id="cacheSize">0 MB</span>
+                        </div>
+                    </div>
+                    <div class="webdav-actions">
+                        <button class="btn-primary btn-sm" id="btnSyncNow">立即同步</button>
+                        <button class="btn-secondary btn-sm" id="btnCheckConnection">检查连接</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="migration-card">
+                <div class="card-header" id="migrationCardHeader" style="cursor: pointer;">
+                    <h3>文件迁移</h3>
+                    <span class="collapse-icon">▼</span>
+                </div>
+                <div class="collapsible-content" id="migrationCollapsibleContent" style="display: none;">
+                    <div class="migration-stats" id="migrationStats">
+                        <div class="stat-item">
+                            <span>本地文件:</span>
+                            <span id="localFilesCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>已迁移:</span>
+                            <span id="migratedFilesCount">0</span>
+                        </div>
+                        <div class="migration-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="migrationProgressFill" style="width: 0%"></div>
+                            </div>
+                            <span id="migrationProgressText">0%</span>
+                        </div>
+                    </div>
+                    <div class="migration-actions">
+                        <button class="btn-primary" id="btnStartMigration">迁移到WebDAV</button>
+                        <button class="btn-secondary btn-sm" id="btnDryRunMigration">演练模式</button>
+                    </div>
+                    <div class="migration-status" id="migrationStatus" style="display: none;">
+                        <div class="status-header">
+                            <span id="migrationStatusText">准备中...</span>
+                            <button class="btn-close" id="btnCloseMigrationStatus">×</button>
+                        </div>
+                        <div class="progress-details">
+                            <div class="progress-item">
+                                <span>总数:</span>
+                                <span id="migrationTotal">0</span>
+                            </div>
+                            <div class="progress-item">
+                                <span>已完成:</span>
+                                <span id="migrationCompleted">0</span>
+                            </div>
+                            <div class="progress-item">
+                                <span>失败:</span>
+                                <span id="migrationFailed">0</span>
+                            </div>
+                        </div>
+                        <div class="progress-bar-large">
+                            <div class="progress-fill" id="migrationProgressBar" style="width: 0%"></div>
+                        </div>
+                        <div class="migration-errors" id="migrationErrors"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 筛选栏 -->
+        <div class="filter-section">
+            <div class="filter-row">
+                <input
+                    type="text"
+                    id="searchInput"
+                    class="search-input"
+                    placeholder="搜索单据编号或文件名"
+                >
+
+                <select id="uploadTypeFilter" class="filter-select" title="业务类型">
+                    <option value="">全部业务</option>
+                    <option value="物流">物流</option>
+                    <option value="仓库">仓库</option>
+                </select>
+
+                <select id="docTypeFilter" class="filter-select" title="单据类型">
+                    <option value="">全部单据类型</option>
+                    <option value="销售">销售</option>
+                    <option value="转库">转库</option>
+                    <option value="其他">其他</option>
+                </select>
+
+                <select id="productTypeFilter" class="filter-select">
+                    <option value="">全部产品</option>
+                    <option value="油脂">油脂</option>
+                    <option value="快消">快消</option>
+                </select>
+
+                <select id="statusFilter" class="filter-select">
+                    <option value="">全部状态</option>
+                    <option value="pending">待上传</option>
+                    <option value="uploading">上传中</option>
+                    <option value="success">成功</option>
+                    <option value="failed">失败</option>
+                </select>
+
+                <!-- 物流筛选 -->
+                <select id="logisticsFilter" class="filter-select">
+                    <option value="全部物流">全部物流</option>
+                    <!-- 动态加载选项 -->
+                </select>
+
+                <!-- 客户名称筛选 (包含匹配,查询该客户相关单据) -->
+                <input
+                    type="text"
+                    id="customerNameFilter"
+                    class="search-input"
+                    placeholder="客户名称(可输入部分)"
+                    title="输入客户名称的任意部分,查询该客户的相关单据"
+                >
+
+                <!-- 日期筛选器 - 单行紧凑布局 -->
+                <div class="date-range-compact">
+                    <input
+                        type="date"
+                        id="startDateInput"
+                        class="date-input-compact"
+                        placeholder="开始"
+                    >
+                    <span class="date-separator">至</span>
+                    <input
+                        type="date"
+                        id="endDateInput"
+                        class="date-input-compact"
+                        placeholder="结束"
+                    >
+                </div>
+
+                <button class="btn-search" id="btnSearch">搜索</button>
+                <button class="btn-reset" id="btnReset">重置</button>
+            </div>
+        </div>
+
+        <!-- 数据表格 -->
+        <div class="table-section">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th width="40">
+                            <input type="checkbox" id="selectAll" title="全选">
+                        </th>
+                        <th>单据编号</th>
+                        <th>客户名称</th>
+                        <th>单据类型</th>
+                        <th>产品类型</th>
+                        <th>上传时间</th>
+                        <th>文件名</th>
+                        <th>大小</th>
+                        <th>状态</th>
+                        <th width="140">操作</th>
+                        <th width="150">备注</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- 数据行动态插入 -->
+                </tbody>
+            </table>
+
+            <!-- 空状态 -->
+            <div class="empty-state" id="emptyState" style="display: none;">
+                <p>暂无记录</p>
+            </div>
+
+            <!-- 加载状态 -->
+            <div class="loading-state" id="loadingState" style="display: none;">
+                <div class="spinner"></div>
+                <p>加载中...</p>
+            </div>
+        </div>
+
+        <!-- 分页 -->
+        <div class="pagination-section">
+            <div class="pagination-info">
+                共 <span id="totalRecords">0</span> 条记录，
+                第 <span id="currentPage">1</span> / <span id="totalPages">1</span> 页
+            </div>
+            <div class="pagination-controls">
+                <button class="btn-page" id="btnFirstPage">首页</button>
+                <button class="btn-page" id="btnPrevPage">上一页</button>
+                <button class="btn-page" id="btnNextPage">下一页</button>
+                <button class="btn-page" id="btnLastPage">末页</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast提示 -->
+    <div class="toast" id="toast"></div>
+
+    <!-- 图片预览模态框 -->
+    <div id="imagePreviewModal" class="image-modal" style="display: none;">
+        <div class="image-modal-overlay"></div>
+        <div class="image-modal-container">
+            <!-- 关闭按钮 -->
+            <button class="image-modal-close" aria-label="关闭">&times;</button>
+
+            <!-- 工具栏 -->
+            <div class="image-modal-toolbar">
+                <button class="toolbar-btn" id="btnZoomOut" title="缩小(-)">
+                    <span class="btn-icon">-</span>
+                </button>
+                <span class="zoom-level" id="zoomLevel">100%</span>
+                <button class="toolbar-btn" id="btnZoomIn" title="放大(+)">
+                    <span class="btn-icon">+</span>
+                </button>
+                <button class="toolbar-btn" id="btnRotateLeft" title="逆时针旋转">
+                    <span class="btn-icon">↺</span>
+                </button>
+                <button class="toolbar-btn" id="btnRotateRight" title="顺时针旋转">
+                    <span class="btn-icon">↻</span>
+                </button>
+                <button class="toolbar-btn" id="btnReset" title="重置">
+                    <span class="btn-icon">⟲</span>
+                </button>
+            </div>
+
+            <!-- 图片容器 -->
+            <div class="image-modal-content">
+                <!-- 加载状态 -->
+                <div class="image-loading" id="imageLoading">
+                    <div class="loading-spinner"></div>
+                    <p>加载中...</p>
+                </div>
+
+                <!-- 图片 -->
+                <img id="previewImage" class="preview-image" alt="预览图片" style="display: none;">
+
+                <!-- 错误提示 -->
+                <div class="image-error" id="imageError" style="display: none;">
+                    <p>❌ 图片加载失败</p>
+                    <small id="errorMessage">文件不存在或无法访问</small>
+                </div>
+            </div>
+
+            <!-- 文件名标题 -->
+            <div class="image-modal-footer">
+                <span id="imageFileName">文件名</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 管理页路径为 /{token}, 物流链接管理页在其下一级
+        document.getElementById('navLogisticsLinks').href =
+            location.pathname.replace(/\/$/, '') + '/logistics-links';
+    </script>
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>待上传回单单据</title>
+    <link rel="stylesheet" href="/static/css/logistics-portal.css">
+</head>
+<body>
+    <div class="portal-container">
+        <header class="portal-header">
+            <h1 id="companyName">加载中...</h1>
+            <div class="portal-meta">
+                <span id="metaText"></span>
+                <button class="btn-refresh" id="btnRefresh">刷新</button>
+            </div>
+        </header>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="搜索单据编号 / 客户名称" autocomplete="off">
+        </div>
+
+        <div id="listContainer" class="list-container">
+            <div class="state-tip" id="stateTip">加载中...</div>
+        </div>
+    </div>
+
+    <script src="/static/js/logistics-portal.js"></script>
+</body>
+</html>

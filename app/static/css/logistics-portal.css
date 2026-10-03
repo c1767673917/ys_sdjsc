@@ -1,0 +1,221 @@
+/* 物流待上传门户页 - 移动端优先, 令牌取值与 admin.css 一致 */
+:root {
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --primary-light: #eef2ff;
+
+    --success: #16a34a;
+    --success-light: #dcfce7;
+    --success-dark: #166534;
+
+    --warning-light: #fef3c7;
+    --warning-dark: #92400e;
+
+    --bg: #eef2f7;
+    --surface: #ffffff;
+    --surface-muted: #f8fafc;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --text-subtle: #94a3b8;
+
+    --radius-lg: 16px;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-pill: 999px;
+
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+    --shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+
+    --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+}
+
+.portal-container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 16px;
+}
+
+/* 头部 */
+.portal-header {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 18px 20px;
+    margin-bottom: 14px;
+}
+
+.portal-header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    word-break: break-all;
+}
+
+.portal-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.btn-refresh {
+    flex-shrink: 0;
+    height: 34px;
+    padding: 0 16px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+
+.btn-refresh:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
+}
+
+/* 搜索框 */
+.search-box {
+    margin-bottom: 14px;
+}
+
+.search-box input {
+    width: 100%;
+    height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--text);
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.search-box input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+}
+
+.search-box input::placeholder {
+    color: var(--text-subtle);
+}
+
+/* 单据卡片列表 */
+.list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.delivery-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 14px 16px;
+}
+
+.delivery-info {
+    min-width: 0;
+}
+
+.delivery-code {
+    font-weight: 700;
+    font-size: 15px;
+    word-break: break-all;
+}
+
+.delivery-sub {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+}
+
+.delivery-memo {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--text-muted);
+    word-break: break-all;
+}
+
+.btn-upload {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 38px;
+    padding: 0 18px;
+    border-radius: var(--radius-sm);
+    background: var(--primary);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background var(--transition);
+}
+
+.btn-upload:hover {
+    background: var(--primary-hover);
+}
+
+/* 状态提示(空态/加载/错误) */
+.state-tip {
+    background: var(--surface);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 48px 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 15px;
+}
+
+.state-tip.success {
+    border-style: solid;
+    border-color: var(--success-light);
+    background: var(--success-light);
+    color: var(--success-dark);
+}
+
+@media (min-width: 640px) {
+    .portal-container {
+        padding: 24px;
+    }
+    .portal-header h1 {
+        font-size: 24px;
+    }
+}

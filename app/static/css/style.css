@@ -1,0 +1,491 @@
+/* 基础样式重置 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: #f5f5f5;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #fff;
+    min-height: 100vh;
+}
+
+/* 头部 */
+.header {
+    text-align: center;
+    padding: 20px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.header h1 {
+    font-size: 24px;
+    color: #1890ff;
+    margin-bottom: 10px;
+}
+
+.business-id {
+    font-size: 14px;
+    color: #666;
+}
+
+.business-id span {
+    font-weight: bold;
+    color: #1890ff;
+}
+
+/* 上传区域 */
+.upload-section {
+    margin: 30px 0;
+}
+
+.upload-area {
+    border: 2px dashed #d9d9d9;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.upload-area:hover {
+    border-color: #1890ff;
+    background: #f0f8ff;
+}
+
+.upload-icon {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+
+.upload-area p {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 5px;
+}
+
+.upload-area .hint {
+    font-size: 12px;
+    color: #999;
+}
+
+/* 预览区域 */
+.preview-section {
+    margin: 20px 0;
+}
+
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    font-size: 14px;
+    color: #666;
+}
+
+.btn-clear {
+    background: none;
+    border: none;
+    color: #ff4d4f;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.preview-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+}
+
+.preview-item {
+    position: relative;
+    padding-top: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #eee;
+}
+
+.preview-item img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.preview-item .btn-remove {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 操作按钮 */
+.action-section {
+    margin: 20px 0;
+}
+
+.btn-upload {
+    width: 100%;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+    background: #1890ff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-upload:hover:not(:disabled) {
+    background: #40a9ff;
+}
+
+.btn-upload:disabled {
+    background: #d9d9d9;
+    cursor: not-allowed;
+}
+
+/* 进度区域 */
+.progress-section {
+    margin: 20px 0;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    font-size: 14px;
+    color: #666;
+}
+
+.progress-bar-container {
+    height: 10px;
+    background: #f0f0f0;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 15px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #1890ff, #40a9ff);
+    transition: width 0.3s;
+    width: 0;
+}
+
+.progress-list {
+    font-size: 12px;
+}
+
+.progress-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.progress-item .filename {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.progress-item .status {
+    margin-left: 10px;
+    font-size: 18px;
+}
+
+.progress-item .status.success {
+    color: #52c41a;
+}
+
+.progress-item .status.error {
+    color: #ff4d4f;
+}
+
+.progress-item .status.loading {
+    color: #1890ff;
+}
+
+.progress-item .error-msg {
+    font-size: 11px;
+    color: #ff4d4f;
+    margin-top: 3px;
+}
+
+/* Toast提示 */
+.toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 24px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 9999;
+    display: none;
+    animation: slideDown 0.3s;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+.toast.success {
+    background: #52c41a;
+}
+
+.toast.error {
+    background: #ff4d4f;
+}
+
+/* 历史记录按钮 */
+.history-section {
+    margin: 30px 0;
+    text-align: center;
+}
+
+.btn-history {
+    padding: 10px 30px;
+    font-size: 14px;
+    color: #1890ff;
+    background: #fff;
+    border: 1px solid #1890ff;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-history:hover {
+    background: #f0f8ff;
+}
+
+/* 弹窗 */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-content {
+    background: #fff;
+    border-radius: 8px;
+    max-width: 600px;
+    width: 100%;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.modal-header h2 {
+    font-size: 18px;
+}
+
+.btn-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #999;
+}
+
+.modal-body {
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.history-item {
+    padding: 15px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.history-item .filename {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.history-item .meta {
+    font-size: 12px;
+    color: #999;
+}
+
+.history-item .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-left: 10px;
+}
+
+.history-item .status-badge.pending {
+    background: #f0f0f0;
+    color: #8c8c8c;
+}
+
+.history-item .status-badge.uploading {
+    background: #e6f7ff;
+    color: #1890ff;
+}
+
+.history-item .status-badge.success {
+    background: #f6ffed;
+    color: #52c41a;
+}
+
+.history-item .status-badge.failed {
+    background: #fff1f0;
+    color: #ff4d4f;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+
+    .header h1 {
+        font-size: 20px;
+    }
+
+    .preview-list {
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    }
+}
+
+/* 单据类型主题色 */
+.header.theme-sales {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.header.theme-sales h1,
+.header.theme-sales .business-id,
+.header.theme-sales .business-id span {
+    color: white;
+}
+
+.header.theme-transfer {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.header.theme-transfer h1,
+.header.theme-transfer .business-id,
+.header.theme-transfer .business-id span {
+    color: white;
+}
+
+.header.theme-other {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+}
+
+.header.theme-other h1,
+.header.theme-other .business-id,
+.header.theme-other .business-id span {
+    color: white;
+}
+
+/* ===== 业务类型选择 ===== */
+.upload-type-section {
+    margin: 24px 0 0;
+    text-align: center;
+}
+
+.upload-type-tip {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 12px;
+}
+
+.upload-type-options {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.upload-type-btn {
+    flex: 1;
+    max-width: 180px;
+    padding: 14px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #1890ff;
+    background: #fff;
+    border: 2px solid #1890ff;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.upload-type-btn:hover {
+    background: #f0f8ff;
+}
+
+.upload-type-btn.active {
+    color: #fff;
+    background: #1890ff;
+}
+
+.upload-type-display {
+    margin-top: 6px;
+}
+
+/* 选择业务类型前禁用上传区域 */
+.upload-area.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}

@@ -1,0 +1,78 @@
+services:
+  upload-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: upload-manager
+    ports:
+      - "10000:10000"
+    environment:
+      - APP_NAME=单据上传管理系统
+      - APP_VERSION=1.0.0
+      - HOST=0.0.0.0
+      - PORT=10000
+      - DEBUG=false
+      # 管理后台鉴权token（必须设置强随机值, 管理页访问路径为 /<ADMIN_TOKEN>）
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      # HTTPS部署时设true, Cookie带Secure; 本地HTTP保持false
+      - ADMIN_COOKIE_SECURE=${ADMIN_COOKIE_SECURE:-false}
+
+      - YONYOU_APP_KEY=${YONYOU_APP_KEY}
+      - YONYOU_APP_SECRET=${YONYOU_APP_SECRET}
+      - YONYOU_BUSINESS_TYPE=yonbip-scm-scmsa
+      - YONYOU_AUTH_URL=https://c4.yonyoucloud.com/iuap-api-auth/open-auth/selfAppAuth/base/v1/getAccessToken
+      - YONYOU_UPLOAD_URL=https://c4.yonyoucloud.com/iuap-api-gateway/yonbip/uspace/iuap-apcom-file/rest/v1/file
+
+      - MAX_FILE_SIZE=10485760
+      - MAX_FILES_PER_REQUEST=10
+      - MAX_RETRY_COUNT=3
+      - RETRY_DELAY=2
+      - REQUEST_TIMEOUT=30
+      - MAX_CONCURRENT_UPLOADS=3
+
+      - DATABASE_URL=sqlite:///data/uploads.db
+      - LOCAL_STORAGE_PATH=data/uploaded_files
+      - TEMP_STORAGE_DIR=./temp_storage
+      - TOKEN_CACHE_DURATION=3600
+
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_BASE_PATH=${S3_BASE_PATH:-djgl-hk}
+      - S3_PRESIGNED_EXPIRY=${S3_PRESIGNED_EXPIRY:-3600}
+      - S3_TIMEOUT=${S3_TIMEOUT:-30}
+      - S3_RETRY_COUNT=${S3_RETRY_COUNT:-3}
+      - S3_RETRY_DELAY=${S3_RETRY_DELAY:-5}
+      - S3_USE_PATH_STYLE=${S3_USE_PATH_STYLE:-true}
+      - S3_MULTIPART_THRESHOLD=${S3_MULTIPART_THRESHOLD:-52428800}
+      - S3_DEBUG=${S3_DEBUG:-false}
+
+      # 遗留 WebDAV 配置（仅迁移期需要）
+      # - WEBDAV_URL=${WEBDAV_URL}
+      # - WEBDAV_USERNAME=${WEBDAV_USERNAME}
+      # - WEBDAV_PASSWORD=${WEBDAV_PASSWORD}
+      # - WEBDAV_BASE_PATH=${WEBDAV_BASE_PATH}
+
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./temp_storage:/app/temp_storage
+      - ./temp_backups:/app/temp_backups
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:10000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - upload-network
+
+networks:
+  upload-network:
+    driver: bridge

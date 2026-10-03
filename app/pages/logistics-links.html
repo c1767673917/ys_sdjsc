@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>物流链接管理 - 单据上传系统</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
+    <link rel="stylesheet" href="/static/css/logistics-links.css">
+</head>
+<body>
+    <div class="admin-container">
+        <header class="admin-header">
+            <h1>物流链接管理</h1>
+            <div class="header-actions">
+                <a class="btn-secondary" id="navBackAdmin" href="#">返回管理页</a>
+                <button class="btn-primary" id="btnSync">立即同步</button>
+            </div>
+        </header>
+
+        <div class="sync-status-bar" id="syncStatusBar">
+            <span id="syncStatusText">加载中...</span>
+        </div>
+
+        <div class="links-card">
+            <table class="links-table">
+                <thead>
+                    <tr>
+                        <th>物流公司</th>
+                        <th class="col-count">待上传单据</th>
+                        <th>专属链接</th>
+                        <th class="col-access">最近访问</th>
+                        <th class="col-actions">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="linksTableBody">
+                    <tr><td colspan="5" class="empty-cell">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // 本页路径为 /{token}/logistics-links, 上一级即管理页
+        document.getElementById('navBackAdmin').href =
+            location.pathname.replace(/\/logistics-links\/?$/, '') || '/';
+    </script>
+    <script src="/static/js/logistics-links.js"></script>
+</body>
+</html>

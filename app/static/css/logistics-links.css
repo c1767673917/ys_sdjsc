@@ -1,0 +1,152 @@
+/* 物流链接管理页 - 复用 admin.css 设计令牌 */
+
+.header-actions a.btn-secondary {
+    text-decoration: none;
+}
+
+/* 同步状态条 */
+.sync-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 12px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.sync-status-bar .status-ok { color: var(--success); font-weight: 600; }
+.sync-status-bar .status-failed { color: var(--danger); font-weight: 600; }
+.sync-status-bar .status-running { color: var(--info); font-weight: 600; }
+
+/* 链接表 */
+.links-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+}
+
+.links-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.links-table th {
+    padding: 14px 18px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.links-table td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.links-table tbody tr:last-child td { border-bottom: none; }
+.links-table tbody tr:hover { background: var(--surface-muted); }
+
+.empty-cell {
+    text-align: center;
+    color: var(--text-subtle);
+    padding: 40px 0 !important;
+}
+
+/* 待上传数量徽标 */
+.pending-badge {
+    display: inline-block;
+    min-width: 34px;
+    padding: 3px 10px;
+    border-radius: var(--radius-pill);
+    text-align: center;
+    font-weight: 700;
+    background: var(--danger-light);
+    color: var(--danger-dark);
+}
+
+.pending-badge.zero {
+    background: var(--surface-muted);
+    color: var(--text-subtle);
+    font-weight: 600;
+}
+
+/* 链接单元格 */
+.link-cell {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 行内小按钮 */
+.btn-mini {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 12px;
+    margin-right: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.btn-mini:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
+}
+
+.btn-mini.danger:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--danger-light);
+}
+
+/* 轻提示 */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 36px;
+    transform: translateX(-50%) translateY(20px);
+    padding: 12px 22px;
+    background: var(--text);
+    color: #fff;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition), transform var(--transition);
+    z-index: 100;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 768px) {
+    .col-access { display: none; }
+    .link-cell { max-width: 160px; }
+}
